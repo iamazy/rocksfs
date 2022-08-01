@@ -60,6 +60,8 @@ mkdir -p ./rocksfs/db # save rocksdb's log
 cargo run rocksfs ./rocksfs/fs ./rocksfs/db
 ```
 
+If you close the program unexpected, maybe got an error that says "Device not configured", you can execute the command `umount -f <mount point>` to solve it.
+
 ## Acknowledgments
 
 - [tifs](https://github.com/Hexilee/tifs) - A distributed POSIX filesystem based on TiKV, with partition tolerance and strict consistency.

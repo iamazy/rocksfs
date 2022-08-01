@@ -57,7 +57,7 @@ git clone https://github.com/iamazy/rocksfs.git
 cd rocksfs
 mkdir -p ./rocksfs/fs # as mount point
 mkdir -p ./rocksfs/db # save rocksdb's log
-cargo run rocksfs /tmp/rocksfs/fs /tmp/rocksfs/db
+cargo run rocksfs ./rocksfs/fs ./rocksfs/db
 ```
 
 ## Acknowledgments

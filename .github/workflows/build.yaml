@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Cargo build and test
+      - name: install fuse
+        run: |
+          sudo apt install -y libfuse-dev libfuse3-dev build-essential
+      - name: Cargo build
         run: |
           cargo build

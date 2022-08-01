@@ -157,6 +157,10 @@ where
     Ok(())
 }
 
-pub async fn mount_rocksfs(mountpoint: String, path: String, options: Vec<MountOption>) -> anyhow::Result<()> {
+pub async fn mount_rocksfs(
+    mountpoint: String,
+    path: String,
+    options: Vec<MountOption>,
+) -> anyhow::Result<()> {
     mount_rocksfs_daemonize(mountpoint, path, options, || Ok(())).await
 }

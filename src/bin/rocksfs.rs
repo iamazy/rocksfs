@@ -1,6 +1,6 @@
 use clap::{crate_version, App, Arg};
 use rocksfs::{mount_rocksfs_daemonize, MountOption};
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -13,14 +13,14 @@ async fn main() -> anyhow::Result<()> {
                 .value_name("MOUNT_POINT")
                 .required(true)
                 .help("act as a client, and mount FUSE at given path")
-                .index(1)
+                .index(1),
         )
         .arg(
             Arg::with_name("db-path")
                 .value_name("DB_PATH")
                 .required(true)
                 .help("the path of db file")
-                .index(2)
+                .index(2),
         )
         .arg(
             Arg::with_name("options")
@@ -28,25 +28,25 @@ async fn main() -> anyhow::Result<()> {
                 .long("option")
                 .short('o')
                 .multiple(true)
-                .help("filesystem mount options")
+                .help("filesystem mount options"),
         )
         .arg(
             Arg::with_name("foreground")
                 .long("foreground")
                 .short('f')
-                .help("foreground operation")
+                .help("foreground operation"),
         )
         .arg(
             Arg::with_name("serve")
                 .long("serve")
                 .help("run in server mode (implies --foreground)")
-                .hidden(true)
+                .hidden(true),
         )
         .arg(
             Arg::with_name("logfile")
                 .long("log-file")
                 .value_name("LOGFILE")
-                .help("log file in server mode (ignored if --foreground is present)")
+                .help("log file in server mode (ignored if --foreground is present)"),
         )
         .get_matches();
 
@@ -140,57 +140,63 @@ async fn main() -> anyhow::Result<()> {
     //     return Ok(());
     // }
 
-    mount_rocksfs_daemonize(mountpoint.to_string(), db_path.to_string(), options, move || {
-        if serve {
-            use std::ffi::CString;
-            use std::io::{Error, Write};
+    mount_rocksfs_daemonize(
+        mountpoint.to_string(),
+        db_path.to_string(),
+        options,
+        move || {
+            if serve {
+                use std::ffi::CString;
+                use std::io::{Error, Write};
 
-            use anyhow::bail;
-            use libc;
+                use anyhow::bail;
+                use libc;
 
-            debug!("using log file: {:?}", logfile);
+                debug!("using log file: {:?}", logfile);
 
-            std::io::stdout().flush()?;
-            std::io::stderr().flush()?;
+                std::io::stdout().flush()?;
+                std::io::stderr().flush()?;
 
-            let mut logfd = None;
-            if let Some(f) = logfile {
-                let log_file_name = CString::new(f)?;
+                let mut logfd = None;
+                if let Some(f) = logfile {
+                    let log_file_name = CString::new(f)?;
+                    unsafe {
+                        let fd =
+                            libc::open(log_file_name.as_ptr(), libc::O_WRONLY | libc::O_APPEND, 0);
+                        if fd == -1 {
+                            bail!(Error::last_os_error());
+                        }
+                        logfd = Some(fd);
+
+                        libc::dup2(fd, 1);
+                        libc::dup2(fd, 2);
+                        if fd > 2 {
+                            libc::close(fd);
+                        }
+                    }
+                    debug!("output redirected");
+                }
+
+                let null_file_name = CString::new("/dev/null")?;
+
                 unsafe {
-                    let fd = libc::open(log_file_name.as_ptr(), libc::O_WRONLY | libc::O_APPEND, 0);
-                    if fd == -1 {
-                        bail!(Error::last_os_error());
-                    }
-                    logfd = Some(fd);
-
-                    libc::dup2(fd, 1);
-                    libc::dup2(fd, 2);
-                    if fd > 2 {
-                        libc::close(fd);
-                    }
-                }
-                debug!("output redirected");
-            }
-
-            let null_file_name = CString::new("/dev/null")?;
-
-            unsafe {
-                let nullfd = libc::open(null_file_name.as_ptr(), libc::O_RDWR, 0);
-                if nullfd != -1 {
-                    libc::dup2(nullfd, 0);
-                    if logfd.is_none() {
-                        libc::dup2(nullfd, 1);
-                        libc::dup2(nullfd, 2);
-                    }
-                    if nullfd > 2 {
-                        libc::close(nullfd);
+                    let nullfd = libc::open(null_file_name.as_ptr(), libc::O_RDWR, 0);
+                    if nullfd != -1 {
+                        libc::dup2(nullfd, 0);
+                        if logfd.is_none() {
+                            libc::dup2(nullfd, 1);
+                            libc::dup2(nullfd, 2);
+                        }
+                        if nullfd > 2 {
+                            libc::close(nullfd);
+                        }
                     }
                 }
             }
-        }
-        debug!("{}", runtime_config_string);
+            debug!("{}", runtime_config_string);
 
-        Ok(())
-    })
+            Ok(())
+        },
+    )
     .await
 }

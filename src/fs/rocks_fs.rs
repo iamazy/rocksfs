@@ -14,7 +14,7 @@ use bytestring::ByteString;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::{FileAttr, FileType, KernelConfig, TimeOrNow};
 use parse_size::parse_size;
-use std::fmt::{Debug};
+use std::fmt::Debug;
 use std::future::Future;
 
 use std::pin::Pin;

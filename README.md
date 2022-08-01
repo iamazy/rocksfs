@@ -57,7 +57,7 @@ git clone https://github.com/iamazy/rocksfs.git
 cd rocksfs
 mkdir -p ./rocksfs/fs # as mount point
 mkdir -p ./rocksfs/db # save rocksdb's log
-cargo run rocksfs ./rocksfs/fs ./rocksfs/db
+cargo run ./rocksfs/fs ./rocksfs/db
 ```
 
 If you close the program unexpected, maybe got an error that says "Device not configured", you can execute the command `umount -f <mount point>` to solve it.

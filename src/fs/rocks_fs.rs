@@ -218,11 +218,11 @@ impl RocksFs {
 #[async_trait::async_trait]
 impl AsyncFileSystem for RocksFs {
     #[instrument]
-    async fn init(&self, gid: u32, uid: u32, _config: &mut KernelConfig) -> Result<()> {
+    async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
         #[cfg(not(target_os = "macos"))]
         config
-            .add_capabilities(fuser::consts::FUSE_FLOCK_LOCKS)
-            .expect("kernel config failed to add cap_fuse FUSE_CAP_FLOCK_LOCKS");
+            .add_capabilities(fuser::consts::FUSE_POSIX_LOCKS)
+            .expect("kernel config failed to add cap_fuse FUSE_POSIX_LOCKS");
 
         self.spin_no_delay(move |_fs, txn| {
             Box::pin(async move {
@@ -450,7 +450,7 @@ impl AsyncFileSystem for RocksFs {
     }
 
     #[tracing::instrument]
-    async fn open(&self, ino: u64, _flags: i32) -> Result<Open> {
+    async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
         // TODO: deal with flags
         let fh = self
             .spin_no_delay(move |_, txn| Box::pin(txn.open(ino)))

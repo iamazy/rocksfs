@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 fuser = { version = "0.11", features = [ "serializable"]}
-rocksdb = "0.18"
+rocksdb = "0.19"
 clap = { version = "3.2", features = ["cargo"] }
 libc = "0.2"
 toml = "0.5"
@@ -31,7 +31,7 @@ paste = "1.0"
 
 [dev-dependencies]
 fuser = "0.11"
-rocksdb = "0.18"
+rocksdb = "0.19"
 clap = { version = "3.2", features = ["cargo"] }
 libc = "0.2"
 env_logger = "0.9"

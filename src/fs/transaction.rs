@@ -19,7 +19,7 @@ use std::time::SystemTime;
 use tracing::{debug, instrument, trace};
 
 pub struct Txn {
-    db: rocksdb::DB,
+    db: rocksdb::TransactionDB,
     block_size: u64,
     max_blocks: Option<u64>,
     max_name_len: u32,
@@ -51,7 +51,7 @@ impl Txn {
         max_size: Option<u64>,
         max_name_len: u32,
     ) -> Result<Self> {
-        match rocksdb::DB::open_default(path) {
+        match rocksdb::TransactionDB::open_default(path) {
             Ok(db) => Ok(Txn {
                 db,
                 block_size,
@@ -335,6 +335,8 @@ impl Txn {
         let iter = self.iterator_opt(IteratorMode::Start, read_opt);
 
         let mut data = iter
+            .filter(|kv| kv.is_ok())
+            .map(|kv| kv.unwrap())
             .enumerate()
             .flat_map(|(i, pair)| {
                 let key = if let Ok(ScopedKey::Block { ino: _, block }) =
@@ -633,15 +635,17 @@ impl Txn {
         let iter = self.iterator_opt(IteratorMode::Start, read_opt);
 
         let (used_blocks, files) = iter
+            .filter(|kv| kv.is_ok())
+            .map(|kv| kv.unwrap())
             .map(|pair| Inode::deserialize(&pair.1.to_vec()))
             .try_fold((0, 0), |(blocks, files), inode| {
                 Ok::<_, FsError>((blocks + inode?.blocks, files + 1))
             })?;
-        let ffree = std::u64::MAX - next_inode;
+        let ffree = u64::MAX - next_inode;
         let bfree = match self.max_blocks {
             Some(max_blocks) if max_blocks > used_blocks => max_blocks - used_blocks,
             Some(_) => 0,
-            None => std::u64::MAX,
+            None => u64::MAX,
         };
         let blocks = match self.max_blocks {
             Some(max_blocks) => max_blocks,
@@ -666,7 +670,7 @@ impl Txn {
 }
 
 impl Deref for Txn {
-    type Target = rocksdb::DB;
+    type Target = rocksdb::TransactionDB;
 
     fn deref(&self) -> &Self::Target {
         &self.db

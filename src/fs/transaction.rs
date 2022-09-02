@@ -24,7 +24,6 @@ pub struct Txn<'a> {
     block_size: u64,
     max_blocks: Option<u64>,
     max_name_len: u32,
-    marker: PhantomData<&'a ()>
 }
 
 impl<'a> Txn<'a> {
@@ -59,7 +58,6 @@ impl<'a> Txn<'a> {
             block_size,
             max_blocks: max_size.map(|size| size / block_size),
             max_name_len,
-            marker: PhantomData
         }
     }
 

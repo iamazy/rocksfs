@@ -32,10 +32,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .get_matches();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init()
-        .map_err(|err| anyhow::anyhow!("fail to init tracing subscriber: {}", err))?;
+    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
+    // tracing_subscriber::fmt()
+    //     .with_env_filter(EnvFilter::from_default_env())
+    //     .try_init()
+    //     .map_err(|err| anyhow::anyhow!("fail to init tracing subscriber: {}", err))?;
 
     let mountpoint = std::fs::canonicalize(
         &matches

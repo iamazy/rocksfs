@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use crate::fs::block::empty_block;
 use crate::fs::dir::Directory;
 use crate::fs::error::{FsError, Result};
@@ -16,16 +17,17 @@ use rocksdb::{IteratorMode, ReadOptions};
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::time::SystemTime;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, error, info, instrument, trace};
 
-pub struct Txn {
-    db: rocksdb::TransactionDB,
+pub struct Txn<'a> {
+    txn: rocksdb::Transaction<'a, rocksdb::TransactionDB>,
     block_size: u64,
     max_blocks: Option<u64>,
     max_name_len: u32,
+    marker: PhantomData<&'a ()>
 }
 
-impl Txn {
+impl<'a> Txn<'a> {
     const INLINE_DATA_THRESHOLD_BASE: u64 = 1 << 4;
 
     fn inline_data_threshold(&self) -> u64 {
@@ -46,19 +48,18 @@ impl Txn {
     }
 
     pub async fn begin_optimistic(
-        path: impl AsRef<Path>,
+        db: &rocksdb::TransactionDB,
         block_size: u64,
         max_size: Option<u64>,
         max_name_len: u32,
-    ) -> Result<Self> {
-        match rocksdb::TransactionDB::open_default(path) {
-            Ok(db) => Ok(Txn {
-                db,
-                block_size,
-                max_blocks: max_size.map(|size| size / block_size),
-                max_name_len,
-            }),
-            Err(e) => Err(FsError::UnknownError(e.into_string())),
+    ) -> Txn {
+        let txn = db.transaction();
+        Txn {
+            txn,
+            block_size,
+            max_blocks: max_size.map(|size| size / block_size),
+            max_name_len,
+            marker: PhantomData
         }
     }
 
@@ -171,7 +172,7 @@ impl Txn {
             blksize: self.block_size as u32,
             flags: 0,
         }
-        .into();
+            .into();
 
         debug!("make inode({:?})", &inode);
 
@@ -340,7 +341,7 @@ impl Txn {
             .enumerate()
             .flat_map(|(i, pair)| {
                 let key = if let Ok(ScopedKey::Block { ino: _, block }) =
-                    ScopedKey::parse(pair.0.deref())
+                ScopedKey::parse(pair.0.deref())
                 {
                     block
                 } else {
@@ -669,16 +670,16 @@ impl Txn {
     }
 }
 
-impl Deref for Txn {
-    type Target = rocksdb::TransactionDB;
+impl<'a> Deref for Txn<'a> {
+    type Target = rocksdb::Transaction<'a,  rocksdb::TransactionDB>;
 
     fn deref(&self) -> &Self::Target {
-        &self.db
+        &self.txn
     }
 }
 
-impl DerefMut for Txn {
+impl<'a> DerefMut for Txn<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.db
+        &mut self.txn
     }
 }

@@ -14,7 +14,7 @@ use bytestring::ByteString;
 use fuser::consts::FOPEN_DIRECT_IO;
 use fuser::{FileAttr, FileType, KernelConfig, TimeOrNow};
 use parse_size::parse_size;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 
 use std::pin::Pin;
@@ -25,12 +25,21 @@ use tracing::{debug, error, instrument, trace, warn};
 pub const DIR_SELF: ByteString = ByteString::from_static(".");
 pub const DIR_PARENT: ByteString = ByteString::from_static("..");
 
-#[derive(Debug)]
 pub struct RocksFs {
-    pub path: String,
+    pub db: rocksdb::TransactionDB,
     pub direct_io: bool,
     pub block_size: u64,
     pub max_size: Option<u64>,
+}
+
+impl Debug for RocksFs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RocksFs")
+            .field("direct_io", &self.direct_io)
+            .field("block_size", &self.block_size)
+            .field("max_size", &self.max_size)
+            .finish()
+    }
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn 'a + Send + Future<Output = Result<T>>>>;
@@ -42,8 +51,9 @@ impl RocksFs {
 
     #[instrument]
     pub async fn construct(path: String, options: Vec<MountOption>) -> anyhow::Result<Self> {
+        let db =  rocksdb::TransactionDB::open_default(path)?;
         Ok(RocksFs {
-            path,
+            db,
             direct_io: options
                 .iter()
                 .any(|option| matches!(option, MountOption::DirectIO)),
@@ -79,15 +89,15 @@ impl RocksFs {
         })
     }
 
-    async fn process_txn<F, T>(&self, txn: &mut Txn, f: F) -> Result<T>
+    async fn process_txn<F, T>(&self, txn: &mut Txn<'_>, f: F) -> Result<T>
     where
         T: 'static + Send,
         F: for<'a> FnOnce(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
-        // TODO: support transaction
         match f(self, txn).await {
             Ok(v) => {
                 let commit_start = SystemTime::now();
+                txn.commit().unwrap();
                 debug!(
                     "transaction committed in {} ms",
                     commit_start.elapsed().unwrap().as_millis()
@@ -96,6 +106,7 @@ impl RocksFs {
             }
             Err(e) => {
                 debug!("transaction rollback");
+                txn.rollback().unwrap();
                 Err(e)
             }
         }
@@ -107,12 +118,12 @@ impl RocksFs {
         F: for<'a> FnOnce(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
         let mut txn = Txn::begin_optimistic(
-            self.path.clone(),
+            &self.db,
             self.block_size,
             self.max_size,
             Self::MAX_NAME_LEN,
         )
-        .await?;
+        .await;
         self.process_txn(&mut txn, f).await
     }
 
@@ -525,7 +536,7 @@ impl AsyncFileSystem for RocksFs {
         Ok(dir)
     }
 
-    // TODO: Find an api to calculate total and available space on tikv.
+    // TODO: Find an api to calculate total and available space on rocksdb.
     async fn statfs(&self, _ino: u64) -> Result<StatFs> {
         self.spin_no_delay(|_, txn| Box::pin(txn.statfs())).await
     }

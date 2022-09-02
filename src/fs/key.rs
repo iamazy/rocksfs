@@ -56,22 +56,22 @@ impl<'a> ScopedKey<'a> {
     }
 
     pub fn scope(&self) -> u8 {
-        match self {
-            &ScopedKey::Meta => Self::META,
-            &ScopedKey::Inode(_) => Self::INODE,
-            &ScopedKey::Block { ino: _, block: _ } => Self::BLOCK,
-            &ScopedKey::FileHandler { ino: _, handler: _ } => Self::HANDLER,
-            &ScopedKey::FileIndex { parent: _, name: _ } => Self::INDEX,
+        match *self {
+            ScopedKey::Meta => Self::META,
+            ScopedKey::Inode(_) => Self::INODE,
+            ScopedKey::Block { ino: _, block: _ } => Self::BLOCK,
+            ScopedKey::FileHandler { ino: _, handler: _ } => Self::HANDLER,
+            ScopedKey::FileIndex { parent: _, name: _ } => Self::INDEX,
         }
     }
 
     pub fn len(&self) -> usize {
-        1 + match self {
-            &ScopedKey::Meta => 0,
-            &ScopedKey::Inode(_) => size_of::<u64>(),
-            &ScopedKey::Block { ino: _, block: _ } => size_of::<u64>() * 2,
-            &ScopedKey::FileHandler { ino: _, handler: _ } => size_of::<u64>() * 2,
-            &ScopedKey::FileIndex { parent: _, name } => size_of::<u64>() + name.len(),
+        1 + match *self {
+            ScopedKey::Meta => 0,
+            ScopedKey::Inode(_) => size_of::<u64>(),
+            ScopedKey::Block { ino: _, block: _ } => size_of::<u64>() * 2,
+            ScopedKey::FileHandler { ino: _, handler: _ } => size_of::<u64>() * 2,
+            ScopedKey::FileIndex { parent: _, name } => size_of::<u64>() + name.len(),
         }
     }
 

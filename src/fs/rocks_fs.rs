@@ -51,7 +51,7 @@ impl RocksFs {
 
     #[instrument]
     pub async fn construct(path: String, options: Vec<MountOption>) -> anyhow::Result<Self> {
-        let db =  rocksdb::TransactionDB::open_default(path)?;
+        let db = rocksdb::TransactionDB::open_default(path)?;
         Ok(RocksFs {
             db,
             direct_io: options
@@ -117,13 +117,9 @@ impl RocksFs {
         T: 'static + Send,
         F: for<'a> FnOnce(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
     {
-        let mut txn = Txn::begin_optimistic(
-            &self.db,
-            self.block_size,
-            self.max_size,
-            Self::MAX_NAME_LEN,
-        )
-        .await;
+        let mut txn =
+            Txn::begin_optimistic(&self.db, self.block_size, self.max_size, Self::MAX_NAME_LEN)
+                .await;
         self.process_txn(&mut txn, f).await
     }
 
@@ -229,6 +225,7 @@ impl RocksFs {
 #[async_trait::async_trait]
 impl AsyncFileSystem for RocksFs {
     #[instrument]
+    #[allow(unused_variables)]
     async fn init(&self, gid: u32, uid: u32, config: &mut KernelConfig) -> Result<()> {
         #[cfg(not(target_os = "macos"))]
         config
@@ -461,6 +458,7 @@ impl AsyncFileSystem for RocksFs {
     }
 
     #[tracing::instrument]
+    #[allow(unused_variables)]
     async fn open(&self, ino: u64, flags: i32) -> Result<Open> {
         // TODO: deal with flags
         let fh = self

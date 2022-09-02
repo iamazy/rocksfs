@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use crate::fs::block::empty_block;
 use crate::fs::dir::Directory;
 use crate::fs::error::{FsError, Result};
@@ -15,9 +14,8 @@ use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
 use rocksdb::{IteratorMode, ReadOptions};
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
 use std::time::SystemTime;
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{debug, instrument, trace};
 
 pub struct Txn<'a> {
     txn: rocksdb::Transaction<'a, rocksdb::TransactionDB>,
@@ -170,7 +168,7 @@ impl<'a> Txn<'a> {
             blksize: self.block_size as u32,
             flags: 0,
         }
-            .into();
+        .into();
 
         debug!("make inode({:?})", &inode);
 
@@ -263,7 +261,7 @@ impl<'a> Txn<'a> {
         let size = data.len();
         let start = start as usize;
 
-        let mut inlined = inode.inline_data.take().unwrap_or_else(Vec::new);
+        let mut inlined = inode.inline_data.take().unwrap_or_default();
         if start + size > inlined.len() {
             inlined.resize(start + size, 0);
         }
@@ -339,7 +337,7 @@ impl<'a> Txn<'a> {
             .enumerate()
             .flat_map(|(i, pair)| {
                 let key = if let Ok(ScopedKey::Block { ino: _, block }) =
-                ScopedKey::parse(pair.0.deref())
+                    ScopedKey::parse(pair.0.deref())
                 {
                     block
                 } else {
@@ -669,7 +667,7 @@ impl<'a> Txn<'a> {
 }
 
 impl<'a> Deref for Txn<'a> {
-    type Target = rocksdb::Transaction<'a,  rocksdb::TransactionDB>;
+    type Target = rocksdb::Transaction<'a, rocksdb::TransactionDB>;
 
     fn deref(&self) -> &Self::Target {
         &self.txn

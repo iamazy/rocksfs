@@ -1,7 +1,6 @@
 use clap::{crate_version, App, Arg};
 use rocksfs::{mount_rocksfs_daemonize, MountOption};
 use tracing::debug;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -32,7 +31,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .get_matches();
 
-    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
     // tracing_subscriber::fmt()
     //     .with_env_filter(EnvFilter::from_default_env())
     //     .try_init()

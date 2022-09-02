@@ -1,5 +1,5 @@
 #![feature(array_chunks)]
-
+#[allow(clippy::too_many_arguments)]
 pub mod fs;
 
 use crate::fs::rocks_fs::RocksFs;

@@ -12,13 +12,15 @@ use crate::fs::rocks_fs::{DIR_PARENT, DIR_SELF};
 use bytes::Bytes;
 use bytestring::ByteString;
 use fuser::{FileAttr, FileType};
-use rocksdb::{IteratorMode, ReadOptions};
-use std::ops::{Deref, DerefMut};
+use rocksdb::{IteratorMode, ReadOptions, Transaction, TransactionDB};
+use std::ops::Deref;
 use std::time::SystemTime;
 use tracing::{debug, instrument, trace};
 
+unsafe impl<'a> Sync for Txn<'a> {}
+
 pub struct Txn<'a> {
-    txn: rocksdb::Transaction<'a, rocksdb::TransactionDB>,
+    pub(crate) txn: Transaction<'a, TransactionDB>,
     block_size: u64,
     max_blocks: Option<u64>,
     max_name_len: u32,
@@ -45,12 +47,11 @@ impl<'a> Txn<'a> {
     }
 
     pub async fn begin_optimistic(
-        db: &rocksdb::TransactionDB,
+        txn: rocksdb::Transaction<'a, TransactionDB>,
         block_size: u64,
         max_size: Option<u64>,
         max_name_len: u32,
     ) -> Txn {
-        let txn = db.transaction();
         Txn {
             txn,
             block_size,
@@ -59,7 +60,7 @@ impl<'a> Txn<'a> {
         }
     }
 
-    pub async fn open(&mut self, ino: u64) -> Result<u64> {
+    pub async fn open(&self, ino: u64) -> Result<u64> {
         let mut inode = self.read_inode(ino).await?;
         let fh = inode.next_fn;
         self.save_fh(ino, fh, &FileHandler::default()).await?;
@@ -69,28 +70,28 @@ impl<'a> Txn<'a> {
         Ok(fh)
     }
 
-    pub async fn close(&mut self, ino: u64, fh: u64) -> Result<()> {
+    pub async fn close(&self, ino: u64, fh: u64) -> Result<()> {
         self.read_fh(ino, fh).await?;
         let key: Key = ScopedKey::handler(ino, fh).into();
-        self.delete(key)?;
+        self.txn.delete(key)?;
 
         let mut inode = self.read_inode(ino).await?;
         inode.opened_fh -= 1;
         self.save_inode(&inode).await
     }
 
-    pub async fn read_fh(&mut self, ino: u64, fh: u64) -> Result<FileHandler> {
+    pub async fn read_fh(&self, ino: u64, fh: u64) -> Result<FileHandler> {
         let key: Key = ScopedKey::handler(ino, fh).into();
-        let data = self.get(key)?.ok_or(FsError::FhNotFound { ino, fh })?;
+        let data = self.txn.get(key)?.ok_or(FsError::FhNotFound { ino, fh })?;
         FileHandler::deserialize(&data)
     }
 
-    pub async fn save_fh(&mut self, ino: u64, fh: u64, handler: &FileHandler) -> Result<()> {
+    pub async fn save_fh(&self, ino: u64, fh: u64, handler: &FileHandler) -> Result<()> {
         let key: Key = ScopedKey::handler(ino, fh).into();
-        Ok(self.put(key, handler.serialize()?)?)
+        Ok(self.txn.put(key, handler.serialize()?)?)
     }
 
-    pub async fn read(&mut self, ino: u64, fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
+    pub async fn read(&self, ino: u64, fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
         let handler = self.read_fh(ino, fh).await?;
         let start = handler.cursor as i64 + offset;
         if start < 0 {
@@ -99,7 +100,7 @@ impl<'a> Txn<'a> {
         self.read_data(ino, start as u64, Some(size as u64)).await
     }
 
-    pub async fn write(&mut self, ino: u64, fh: u64, offset: i64, data: Bytes) -> Result<usize> {
+    pub async fn write(&self, ino: u64, fh: u64, offset: i64, data: Bytes) -> Result<usize> {
         let handler = self.read_fh(ino, fh).await?;
         let start = handler.cursor as i64 + offset;
         if start < 0 {
@@ -110,7 +111,7 @@ impl<'a> Txn<'a> {
     }
 
     pub async fn make_inode(
-        &mut self,
+        &self,
         parent: u64,
         name: ByteString,
         mode: u32,
@@ -176,78 +177,74 @@ impl<'a> Txn<'a> {
         Ok(inode)
     }
 
-    pub async fn get_index(&mut self, parent: u64, name: ByteString) -> Result<Option<u64>> {
+    pub async fn get_index(&self, parent: u64, name: ByteString) -> Result<Option<u64>> {
         let key: Key = ScopedKey::index(parent, &name).into();
-        self.get(key).map_err(FsError::from).and_then(|value| {
+        self.txn.get(key).map_err(FsError::from).and_then(|value| {
             value
                 .map(|data| Ok(Index::deserialize(&data)?.ino))
                 .transpose()
         })
     }
 
-    pub async fn set_index(&mut self, parent: u64, name: ByteString, ino: u64) -> Result<()> {
+    pub async fn set_index(&self, parent: u64, name: ByteString, ino: u64) -> Result<()> {
         let key: Key = ScopedKey::index(parent, &name).into();
         let value = Index::new(ino).serialize()?;
-        Ok(self.put(key, value)?)
+        Ok(self.txn.put(key, value)?)
     }
 
-    pub async fn remove_index(&mut self, parent: u64, name: ByteString) -> Result<()> {
+    pub async fn remove_index(&self, parent: u64, name: ByteString) -> Result<()> {
         let key: Key = ScopedKey::index(parent, &name).into();
-        Ok(self.delete(key)?)
+        Ok(self.txn.delete(key)?)
     }
 
-    pub async fn read_inode(&mut self, ino: u64) -> Result<Inode> {
+    pub async fn read_inode(&self, ino: u64) -> Result<Inode> {
         let key: Key = ScopedKey::inode(ino).into();
         let data = self
+            .txn
             .get(key)?
             .ok_or(FsError::InodeNotFound { inode: ino })?;
         Inode::deserialize(&data)
     }
 
-    pub async fn save_inode(&mut self, inode: &Inode) -> Result<()> {
+    pub async fn save_inode(&self, inode: &Inode) -> Result<()> {
         let key: Key = ScopedKey::inode(inode.ino).into();
         if inode.nlink == 0 && inode.opened_fh == 0 {
-            let _ = self.delete(key);
+            let _ = self.txn.delete(key);
         } else {
-            let _ = self.put(key, inode.serialize()?);
+            let _ = self.txn.put(key, inode.serialize()?);
             debug!("save inode: {:?}", inode);
         }
         Ok(())
     }
 
-    pub async fn remove_inode(&mut self, ino: u64) -> Result<()> {
+    pub async fn remove_inode(&self, ino: u64) -> Result<()> {
         let key: Key = ScopedKey::inode(ino).into();
-        Ok(self.delete(key)?)
+        Ok(self.txn.delete(key)?)
     }
 
-    pub async fn read_meta(&mut self) -> Result<Option<Meta>> {
+    pub async fn read_meta(&self) -> Result<Option<Meta>> {
         let key: Key = ScopedKey::meta().into();
-        let opt_data = self.get(key)?;
+        let opt_data = self.txn.get(key)?;
         opt_data.map(|data| Meta::deserialize(&data)).transpose()
     }
 
-    pub async fn save_meta(&mut self, meta: &Meta) -> Result<()> {
+    pub async fn save_meta(&self, meta: &Meta) -> Result<()> {
         let key: Key = ScopedKey::meta().into();
-        Ok(self.put(key, meta.serialize()?)?)
+        Ok(self.txn.put(key, meta.serialize()?)?)
     }
 
-    pub async fn transfer_inline_data_to_block(&mut self, inode: &mut Inode) -> Result<()> {
+    pub async fn transfer_inline_data_to_block(&self, inode: &mut Inode) -> Result<()> {
         debug_assert!(inode.size <= self.inline_data_threshold());
         let key: Key = ScopedKey::block(inode.ino, 0).into();
 
         let mut data = inode.inline_data.clone().unwrap();
         data.resize(self.block_size as usize, 0);
-        self.put(key, data)?;
+        self.txn.put(key, data)?;
         inode.inline_data = None;
         Ok(())
     }
 
-    async fn write_inline_data(
-        &mut self,
-        inode: &mut Inode,
-        start: u64,
-        data: &[u8],
-    ) -> Result<usize> {
+    async fn write_inline_data(&self, inode: &mut Inode, start: u64, data: &[u8]) -> Result<usize> {
         debug_assert!(inode.size <= self.inline_data_threshold());
         let size = data.len() as u64;
         debug_assert!(
@@ -277,12 +274,7 @@ impl<'a> Txn<'a> {
         Ok(size)
     }
 
-    async fn read_inline_data(
-        &mut self,
-        inode: &mut Inode,
-        start: u64,
-        size: u64,
-    ) -> Result<Vec<u8>> {
+    async fn read_inline_data(&self, inode: &mut Inode, start: u64, size: u64) -> Result<Vec<u8>> {
         debug_assert!(inode.size <= self.inline_data_threshold());
 
         let start = start as usize;
@@ -303,7 +295,7 @@ impl<'a> Txn<'a> {
     }
 
     pub async fn read_data(
-        &mut self,
+        &self,
         ino: u64,
         start: u64,
         chunk_size: Option<u64>,
@@ -329,7 +321,7 @@ impl<'a> Txn<'a> {
         read_opt.set_iterate_upper_bound(range.start);
         read_opt.set_iterate_lower_bound(range.end);
         // read_opt.set_readahead_size((end_block - start_block) as usize);
-        let iter = self.iterator_opt(IteratorMode::Start, read_opt);
+        let iter = self.txn.iterator_opt(IteratorMode::Start, read_opt);
 
         let mut data = iter
             .filter(|kv| kv.is_ok())
@@ -372,7 +364,7 @@ impl<'a> Txn<'a> {
     }
 
     #[instrument(skip(self, data))]
-    pub async fn write_data(&mut self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
+    pub async fn write_data(&self, ino: u64, start: u64, data: Bytes) -> Result<usize> {
         let write_start = SystemTime::now();
         debug!("write data at ({})[{}]", ino, start);
         let meta = self.read_meta().await?.unwrap();
@@ -401,12 +393,13 @@ impl<'a> Txn<'a> {
         let (first_block, mut rest) = data.split_at(first_block_size.min(data.len()));
 
         let mut start_value = self
+            .txn
             .get(start_key.as_slice())?
             .unwrap_or_else(|| empty_block(self.block_size));
 
         start_value[start_index..start_index + first_block.len()].copy_from_slice(first_block);
 
-        self.put(start_key, start_value)?;
+        self.txn.put(start_key, start_value)?;
 
         while !rest.is_empty() {
             block_index += 1;
@@ -416,12 +409,13 @@ impl<'a> Txn<'a> {
             let mut value = current_block.to_vec();
             if value.len() < self.block_size as usize {
                 let mut last_value = self
+                    .txn
                     .get(key.as_slice())?
                     .unwrap_or_else(|| empty_block(self.block_size));
                 last_value[..value.len()].copy_from_slice(&value);
                 value = last_value;
             }
-            self.put(key, value)?;
+            self.txn.put(key, value)?;
             rest = current_rest;
         }
 
@@ -439,13 +433,13 @@ impl<'a> Txn<'a> {
         Ok(size)
     }
 
-    pub async fn clear_data(&mut self, ino: u64) -> Result<u64> {
+    pub async fn clear_data(&self, ino: u64) -> Result<u64> {
         let mut attr = self.read_inode(ino).await?;
         let end_block = (attr.size + self.block_size - 1) / self.block_size;
 
         for block in 0..end_block {
             let key: Key = ScopedKey::block(ino, block).into();
-            self.delete(key)?;
+            self.txn.delete(key)?;
         }
 
         let clear_size = attr.size;
@@ -455,21 +449,21 @@ impl<'a> Txn<'a> {
         Ok(clear_size)
     }
 
-    pub async fn write_link(&mut self, inode: &mut Inode, data: Bytes) -> Result<usize> {
+    pub async fn write_link(&self, inode: &mut Inode, data: Bytes) -> Result<usize> {
         debug_assert!(inode.file_attr.kind == FileType::Symlink);
         inode.inline_data = None;
         inode.set_size(0, self.block_size);
         self.write_inline_data(inode, 0, &data).await
     }
 
-    pub async fn read_link(&mut self, ino: u64) -> Result<Vec<u8>> {
+    pub async fn read_link(&self, ino: u64) -> Result<Vec<u8>> {
         let mut inode = self.read_inode(ino).await?;
         debug_assert!(inode.file_attr.kind == FileType::Symlink);
         let size = inode.size;
         self.read_inline_data(&mut inode, 0, size).await
     }
 
-    pub async fn link(&mut self, ino: u64, newparent: u64, newname: ByteString) -> Result<Inode> {
+    pub async fn link(&self, ino: u64, newparent: u64, newname: ByteString) -> Result<Inode> {
         if let Some(old_ino) = self.get_index(newparent, newname.clone()).await? {
             let inode = self.read_inode(old_ino).await?;
             match inode.kind {
@@ -495,7 +489,7 @@ impl<'a> Txn<'a> {
         Ok(inode)
     }
 
-    pub async fn unlink(&mut self, parent: u64, name: ByteString) -> Result<()> {
+    pub async fn unlink(&self, parent: u64, name: ByteString) -> Result<()> {
         match self.get_index(parent, name.clone()).await? {
             None => Err(FsError::FileNotFound {
                 file: name.to_string(),
@@ -518,7 +512,7 @@ impl<'a> Txn<'a> {
         }
     }
 
-    pub async fn rmdir(&mut self, parent: u64, name: ByteString) -> Result<()> {
+    pub async fn rmdir(&self, parent: u64, name: ByteString) -> Result<()> {
         match self.get_index(parent, name.clone()).await? {
             None => Err(FsError::FileNotFound {
                 file: name.to_string(),
@@ -542,7 +536,7 @@ impl<'a> Txn<'a> {
         }
     }
 
-    pub async fn lookup(&mut self, parent: u64, name: ByteString) -> Result<u64> {
+    pub async fn lookup(&self, parent: u64, name: ByteString) -> Result<u64> {
         self.get_index(parent, name.clone())
             .await?
             .ok_or_else(|| FsError::FileNotFound {
@@ -550,7 +544,7 @@ impl<'a> Txn<'a> {
             })
     }
 
-    pub async fn fallocate(&mut self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
+    pub async fn fallocate(&self, inode: &mut Inode, offset: i64, length: i64) -> Result<()> {
         let target_size = (offset + length) as u64;
         if target_size <= inode.size {
             return Ok(());
@@ -574,7 +568,7 @@ impl<'a> Txn<'a> {
     }
 
     pub async fn mkdir(
-        &mut self,
+        &self,
         parent: u64,
         name: ByteString,
         mode: u32,
@@ -593,9 +587,9 @@ impl<'a> Txn<'a> {
         self.read_inode(inode.ino).await
     }
 
-    pub async fn read_dir(&mut self, ino: u64) -> Result<Directory> {
+    pub async fn read_dir(&self, ino: u64) -> Result<Directory> {
         let key: Key = ScopedKey::block(ino, 0).into();
-        let data = self.get(key)?.ok_or(FsError::BlockNotFound {
+        let data = self.txn.get(key)?.ok_or(FsError::BlockNotFound {
             inode: ino,
             block: 0,
         })?;
@@ -603,7 +597,7 @@ impl<'a> Txn<'a> {
         super::dir::decode(&data)
     }
 
-    pub async fn save_dir(&mut self, ino: u64, dir: &[DirItem]) -> Result<Inode> {
+    pub async fn save_dir(&self, ino: u64, dir: &[DirItem]) -> Result<Inode> {
         let data = super::dir::encode(dir)?;
         let mut inode = self.read_inode(ino).await?;
         inode.set_size(data.len() as u64, self.block_size);
@@ -612,11 +606,11 @@ impl<'a> Txn<'a> {
         inode.ctime = SystemTime::now();
         self.save_inode(&inode).await?;
         let key: Key = ScopedKey::block(ino, 0).into();
-        self.put(key, data)?;
+        self.txn.put(key, data)?;
         Ok(inode)
     }
 
-    pub async fn statfs(&mut self) -> Result<StatFs> {
+    pub async fn statfs(&self) -> Result<StatFs> {
         let bsize = self.block_size as u32;
         let mut meta = self
             .read_meta()
@@ -629,7 +623,7 @@ impl<'a> Txn<'a> {
         read_opt.set_iterate_upper_bound(range.start);
         read_opt.set_iterate_lower_bound(range.end);
         // read_opt.set_readahead_size((next_inode - ROOT_NODE) as usize);
-        let iter = self.iterator_opt(IteratorMode::Start, read_opt);
+        let iter = self.txn.iterator_opt(IteratorMode::Start, read_opt);
 
         let (used_blocks, files) = iter
             .filter(|kv| kv.is_ok())
@@ -663,19 +657,5 @@ impl<'a> Txn<'a> {
         meta.last_stat = Some(stat.clone());
         self.save_meta(&meta).await?;
         Ok(stat)
-    }
-}
-
-impl<'a> Deref for Txn<'a> {
-    type Target = rocksdb::Transaction<'a, rocksdb::TransactionDB>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.txn
-    }
-}
-
-impl<'a> DerefMut for Txn<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.txn
     }
 }

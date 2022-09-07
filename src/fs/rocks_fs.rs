@@ -89,15 +89,15 @@ impl RocksFs {
         })
     }
 
-    async fn process_txn<F, T>(&self, txn: &mut Txn<'_>, f: F) -> Result<T>
+    async fn process_txn<F, T>(&self, txn: Txn<'_>, f: F) -> Result<T>
     where
         T: 'static + Send,
-        F: for<'a> FnOnce(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+        F: for<'a> FnOnce(&'a RocksFs, &'a Txn) -> BoxedFuture<'a, T>,
     {
-        match f(self, txn).await {
+        match f(self, &txn).await {
             Ok(v) => {
                 let commit_start = SystemTime::now();
-                txn.commit().unwrap();
+                txn.txn.commit()?;
                 debug!(
                     "transaction committed in {} ms",
                     commit_start.elapsed().unwrap().as_millis()
@@ -106,7 +106,7 @@ impl RocksFs {
             }
             Err(e) => {
                 debug!("transaction rollback");
-                txn.rollback().unwrap();
+                txn.txn.rollback()?;
                 Err(e)
             }
         }
@@ -115,21 +115,26 @@ impl RocksFs {
     async fn with_optimistic<F, T>(&self, f: F) -> Result<T>
     where
         T: 'static + Send,
-        F: for<'a> FnOnce(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+        F: for<'a> FnOnce(&'a RocksFs, &'a Txn) -> BoxedFuture<'a, T>,
     {
-        let mut txn =
-            Txn::begin_optimistic(&self.db, self.block_size, self.max_size, Self::MAX_NAME_LEN)
-                .await;
-        self.process_txn(&mut txn, f).await
+        let rocks_txn = self.db.transaction();
+        let txn = Txn::begin_optimistic(
+            rocks_txn,
+            self.block_size,
+            self.max_size,
+            Self::MAX_NAME_LEN,
+        )
+        .await;
+        self.process_txn(txn, f).await
     }
 
-    async fn spin<F, T>(&self, delay: Option<Duration>, mut f: F) -> Result<T>
+    async fn spin<F, T>(&self, delay: Option<Duration>, f: F) -> Result<T>
     where
         T: 'static + Send,
-        F: for<'a> FnMut(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+        F: for<'a> Fn(&'a RocksFs, &'a Txn<'_>) -> BoxedFuture<'a, T>,
     {
         loop {
-            match self.with_optimistic(&mut f).await {
+            match self.with_optimistic(&f).await {
                 Ok(v) => break Ok(v),
                 Err(FsError::KeyError(err)) => {
                     trace!("spin because of a key error({})", err);
@@ -145,7 +150,7 @@ impl RocksFs {
     async fn spin_no_delay<F, T>(&self, f: F) -> Result<T>
     where
         T: 'static + Send,
-        F: for<'a> FnMut(&'a RocksFs, &'a mut Txn) -> BoxedFuture<'a, T>,
+        F: for<'a> Fn(&'a RocksFs, &'a Txn) -> BoxedFuture<'a, T>,
     {
         self.spin(None, f).await
     }

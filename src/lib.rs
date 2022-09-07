@@ -1,5 +1,7 @@
 #![feature(array_chunks)]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::declare_interior_mutable_const)]
+#[allow(clippy::borrow_interior_mutable_const)]
 pub mod fs;
 
 use crate::fs::rocks_fs::RocksFs;

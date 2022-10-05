@@ -1,6 +1,7 @@
 name: build rocksfs
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -17,3 +18,4 @@ jobs:
       - name: Cargo build
         run: |
           cargo build
+          cargo test

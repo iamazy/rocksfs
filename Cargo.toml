@@ -16,7 +16,6 @@ tracing-futures = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
 bytes = "1.0"
 bytestring = "1.0"
 futures = "0.3"

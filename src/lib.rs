@@ -1,4 +1,6 @@
 #![feature(array_chunks)]
+#![feature(generic_associated_types)]
+#![feature(type_alias_impl_trait)]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::declare_interior_mutable_const)]
 #[allow(clippy::borrow_interior_mutable_const)]

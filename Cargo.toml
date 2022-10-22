@@ -9,6 +9,7 @@ edition = "2021"
 fuser = { version = "0.11", features = [ "serializable"]}
 rocksdb = { git = "https://github.com/rust-rocksdb/rust-rocksdb", branch = "master" }
 clap = { version = "3", features = ["cargo"] }
+gat-trait = { git = "https://github.com/iamazy/gat-trait", branch = "trunk" }
 libc = "0.2"
 toml = "0.5"
 tracing = "0.1"

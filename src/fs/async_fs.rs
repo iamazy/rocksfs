@@ -40,137 +40,19 @@ where
     block_in_place(move || Handle::current().block_on(future))
 }
 
+#[gat_trait::gat_trait]
 pub trait AsyncFileSystem: Send + Sync {
-    type InitResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type DestroyResultFuture<'a>: Future<Output = ()> + Send + 'a
-    where
-        Self: 'a;
-    type LookupResultFuture<'a>: Future<Output = Result<Entry>> + Send + 'a
-    where
-        Self: 'a;
-    type ForgetResultFuture<'a>: Future<Output = ()> + Send + 'a
-    where
-        Self: 'a;
-    type GetAttrResultFuture<'a>: Future<Output = Result<Attr>> + Send + 'a
-    where
-        Self: 'a;
-    type SetAttrResultFuture<'a>: Future<Output = Result<Attr>> + Send + 'a
-    where
-        Self: 'a;
-    type ReadLinkResultFuture<'a>: Future<Output = Result<Data>> + Send + 'a
-    where
-        Self: 'a;
-    type MkNodResultFuture<'a>: Future<Output = Result<Entry>> + Send + 'a
-    where
-        Self: 'a;
-    type MkDirResultFuture<'a>: Future<Output = Result<Entry>> + Send + 'a
-    where
-        Self: 'a;
-    type UnlinkResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type RmDirResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type SymlinkResultFuture<'a>: Future<Output = Result<Entry>> + Send + 'a
-    where
-        Self: 'a;
-    type RenameResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type LinkResultFuture<'a>: Future<Output = Result<Entry>> + Send + 'a
-    where
-        Self: 'a;
-    type OpenResultFuture<'a>: Future<Output = Result<Open>> + Send + 'a
-    where
-        Self: 'a;
-    type ReadResultFuture<'a>: Future<Output = Result<Data>> + Send + 'a
-    where
-        Self: 'a;
-    type WriteResultFuture<'a>: Future<Output = Result<Write>> + Send + 'a
-    where
-        Self: 'a;
-    type ReleaseResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type FlushResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type FsyncResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type OpenDirResultFuture<'a>: Future<Output = Result<Open>> + Send + 'a
-    where
-        Self: 'a;
-    type ReadDirResultFuture<'a>: Future<Output = Result<Dir>> + Send + 'a
-    where
-        Self: 'a;
-    type ReadDirPlusResultFuture<'a>: Future<Output = Result<DirPlus>> + Send + 'a
-    where
-        Self: 'a;
-    type ReleaseDirResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type FsyncDirResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type StatFsResultFuture<'a>: Future<Output = Result<StatFs>> + Send + 'a
-    where
-        Self: 'a;
-    type SetxAttrResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type GetxAttrResultFuture<'a>: Future<Output = Result<Xattr>> + Send + 'a
-    where
-        Self: 'a;
-    type ListxAttrResultFuture<'a>: Future<Output = Result<Xattr>> + Send + 'a
-    where
-        Self: 'a;
-    type RemovexAttrResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type AccessResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type CreateResultFuture<'a>: Future<Output = Result<Create>> + Send + 'a
-    where
-        Self: 'a;
-    type GetlkResultFuture<'a>: Future<Output = Result<Lock>> + Send + 'a
-    where
-        Self: 'a;
-    type SetlkResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type FallocateResultFuture<'a>: Future<Output = Result<()>> + Send + 'a
-    where
-        Self: 'a;
-    type BmapResultFuture<'a>: Future<Output = Result<Bmap>> + Send + 'a
-    where
-        Self: 'a;
-    type LseekResultFuture<'a>: Future<Output = Result<Lseek>> + Send + 'a
-    where
-        Self: 'a;
-    type CopyFileRangeResultFuture<'a>: Future<Output = Result<Write>> + Send + 'a
-    where
-        Self: 'a;
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     /// The kernel module connection can be configured using the KernelConfig object
-    fn init<'a>(
-        &'a self,
-        _gid: u32,
-        _uid: u32,
-        _config: &'a mut KernelConfig,
-    ) -> Self::InitResultFuture<'_>;
+    async fn init<'a>(&'a self, _gid: u32, _uid: u32, _config: &'a mut KernelConfig) -> Result<()>;
 
     /// Clean up filesystem.
     /// Called on filesystem exit.
-    fn destroy(&self) -> Self::DestroyResultFuture<'_>;
+    async fn destroy(&self) -> ();
 
     /// Look up a directory entry by name and get its attributes.
-    fn lookup(&self, _parent: u64, _name: ByteString) -> Self::LookupResultFuture<'_>;
+    async fn lookup(&self, _parent: u64, _name: ByteString) -> Result<Entry>;
 
     /// Forget about an inode.
     /// The nlookup parameter indicates the number of lookups previously performed on
@@ -179,13 +61,13 @@ pub trait AsyncFileSystem: Send + Sync {
     /// each forget. The filesystem may ignore forget calls, if the inodes don't need to
     /// have a limited lifetime. On unmount it is not guaranteed, that all referenced
     /// inodes will receive a forget message.
-    fn forget(&self, _ino: u64, _nlookup: u64) -> Self::ForgetResultFuture<'_>;
+    async fn forget(&self, _ino: u64, _nlookup: u64);
 
     /// Get file attributes.
-    fn getattr(&self, _ino: u64) -> Self::GetAttrResultFuture<'_>;
+    async fn getattr(&self, _ino: u64) -> Result<Attr>;
 
     /// Set file attributes.
-    fn setattr(
+    async fn setattr(
         &self,
         _ino: u64,
         _mode: Option<u32>,
@@ -200,13 +82,13 @@ pub trait AsyncFileSystem: Send + Sync {
         _chgtime: Option<SystemTime>,
         _bkuptime: Option<SystemTime>,
         _flags: Option<u32>,
-    ) -> Self::SetAttrResultFuture<'_>;
+    ) -> Result<Attr>;
 
     /// Read symbolic link.
-    fn readlink(&self, _ino: u64) -> Self::ReadLinkResultFuture<'_>;
+    async fn readlink(&self, _ino: u64) -> Result<Data>;
     /// Create file node.
     /// Create a regular file, character device, block device, fifo or socket node.
-    fn mknod(
+    async fn mknod(
         &self,
         _parent: u64,
         _name: ByteString,
@@ -215,10 +97,10 @@ pub trait AsyncFileSystem: Send + Sync {
         _uid: u32,
         _umask: u32,
         _rdev: u32,
-    ) -> Self::MkNodResultFuture<'_>;
+    ) -> Result<Entry>;
 
     /// Create a directory.
-    fn mkdir(
+    async fn mkdir(
         &self,
         _parent: u64,
         _name: ByteString,
@@ -226,36 +108,36 @@ pub trait AsyncFileSystem: Send + Sync {
         _gid: u32,
         _uid: u32,
         _umask: u32,
-    ) -> Self::MkDirResultFuture<'_>;
+    ) -> Result<Entry>;
 
     /// Remove a file.
-    fn unlink(&self, _parent: u64, _name: ByteString) -> Self::UnlinkResultFuture<'_>;
+    async fn unlink(&self, _parent: u64, _name: ByteString) -> Result<()>;
 
     /// Remove a directory.
-    fn rmdir(&self, _parent: u64, _name: ByteString) -> Self::RmDirResultFuture<'_>;
+    async fn rmdir(&self, _parent: u64, _name: ByteString) -> Result<()>;
 
     /// Create a symbolic link.
-    fn symlink(
+    async fn symlink(
         &self,
         _gid: u32,
         _uid: u32,
         _parent: u64,
         _name: ByteString,
         _link: ByteString,
-    ) -> Self::SymlinkResultFuture<'_>;
+    ) -> Result<Entry>;
 
     /// Rename a file.
-    fn rename(
+    async fn rename(
         &self,
         _parent: u64,
         _name: ByteString,
         _newparent: u64,
         _newname: ByteString,
         _flags: u32,
-    ) -> Self::RenameResultFuture<'_>;
+    ) -> Result<()>;
 
     /// Create a hard link.
-    fn link(&self, _ino: u64, _newparent: u64, _newname: ByteString) -> Self::LinkResultFuture<'_>;
+    async fn link(&self, _ino: u64, _newparent: u64, _newname: ByteString) -> Result<Entry>;
 
     /// Open a file.
     /// Open flags (with the exception of O_CREAT, O_EXCL, O_NOCTTY and O_TRUNC) are
@@ -265,7 +147,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// anything in fh. There are also some flags (direct_io, keep_cache) which the
     /// filesystem may set, to change the way the file is opened. See fuse_file_info
     /// structure in <fuse_common.h> for more details.
-    fn open(&self, _ino: u64, _flags: i32) -> Self::OpenResultFuture<'_>;
+    async fn open(&self, _ino: u64, _flags: i32) -> Result<Open>;
 
     /// Read data.
     /// Read should send exactly the number of bytes requested except on EOF or error,
@@ -277,7 +159,7 @@ pub trait AsyncFileSystem: Send + Sync {
     ///
     /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
     /// lock_owner: only supported with ABI >= 7.9
-    fn read(
+    async fn read(
         &self,
         _ino: u64,
         _fh: u64,
@@ -285,7 +167,7 @@ pub trait AsyncFileSystem: Send + Sync {
         _size: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
-    ) -> Self::ReadResultFuture<'_>;
+    ) -> Result<Data>;
 
     /// Write data.
     /// Write should return exactly the number of bytes requested except on error. An
@@ -299,7 +181,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// is disabled
     /// flags: these are the file flags, such as O_SYNC. Only supported with ABI >= 7.9
     /// lock_owner: only supported with ABI >= 7.9
-    fn write(
+    async fn write(
         &self,
         _ino: u64,
         _fh: u64,
@@ -308,7 +190,7 @@ pub trait AsyncFileSystem: Send + Sync {
         _write_flags: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
-    ) -> Self::WriteResultFuture<'_>;
+    ) -> Result<Write>;
 
     // Flush method.
     /// This is called on each close() of the opened file. Since file descriptors can
@@ -320,7 +202,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// is not forced to flush pending writes. One reason to flush data, is if the
     /// filesystem wants to return write errors. If the filesystem supports file locking
     /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
-    fn flush(&self, _ino: u64, _fh: u64, _lock_owner: u64) -> Self::FlushResultFuture<'_>;
+    async fn flush(&self, _ino: u64, _fh: u64, _lock_owner: u64) -> Result<()>;
 
     /// Release an open file.
     /// Release is called when there are no more references to an open file: all file
@@ -330,19 +212,19 @@ pub trait AsyncFileSystem: Send + Sync {
     /// the release. fh will contain the value set by the open method, or will be undefined
     /// if the open method didn't set any value. flags will contain the same flags as for
     /// open.
-    fn release(
+    async fn release(
         &self,
         _ino: u64,
         _fh: u64,
         _flags: i32,
         _lock_owner: Option<u64>,
         _flush: bool,
-    ) -> Self::ReleaseResultFuture<'_>;
+    ) -> Result<()>;
 
     /// Synchronize file contents.
     /// If the datasync parameter is non-zero, then only the user data should be flushed,
     /// not the meta data.
-    fn fsync(&self, _ino: u64, _fh: u64, _datasync: bool) -> Self::FsyncResultFuture<'_>;
+    async fn fsync(&self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()>;
 
     /// Open a directory.
     /// Filesystem may store an arbitrary file handle (pointer, index, etc) in fh, and
@@ -351,67 +233,67 @@ pub trait AsyncFileSystem: Send + Sync {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
-    fn opendir(&self, _ino: u64, _flags: i32) -> Self::OpenDirResultFuture<'_>;
+    async fn opendir(&self, _ino: u64, _flags: i32) -> Result<Open>;
 
     /// Read directory.
     /// Send a buffer filled using buffer.fill(), with size not exceeding the
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    fn readdir(&self, _ino: u64, _fh: u64, offset: i64) -> Self::ReadDirResultFuture<'_>;
+    async fn readdir(&self, _ino: u64, _fh: u64, offset: i64) -> Result<Dir>;
 
     /// Read directory.
     /// Send a buffer filled using buffer.fill(), with size not exceeding the
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
-    fn readdirplus(&self, _ino: u64, _fh: u64, offset: i64) -> Self::ReadDirPlusResultFuture<'_>;
+    async fn readdirplus(&self, _ino: u64, _fh: u64, offset: i64) -> Result<DirPlus>;
 
     /// Release an open directory.
     /// For every opendir call there will be exactly one releasedir call. fh will
     /// contain the value set by the opendir method, or will be undefined if the
     /// opendir method didn't set any value.
-    fn releasedir(&self, _ino: u64, _fh: u64, _flags: i32) -> Self::ReleaseDirResultFuture<'_>;
+    async fn releasedir(&self, _ino: u64, _fh: u64, _flags: i32) -> Result<()>;
 
     /// Synchronize directory contents.
     /// If the datasync parameter is set, then only the directory contents should
     /// be flushed, not the meta data. fh will contain the value set by the opendir
     /// method, or will be undefined if the opendir method didn't set any value.
-    fn fsyncdir(&self, _ino: u64, _fh: u64, _datasync: bool) -> Self::FsyncDirResultFuture<'_>;
+    async fn fsyncdir(&self, _ino: u64, _fh: u64, _datasync: bool) -> Result<()>;
 
     /// Get file system statistics.
-    fn statfs(&self, _ino: u64) -> Self::StatFsResultFuture<'_>;
+    async fn statfs(&self, _ino: u64) -> Result<StatFs>;
 
     /// Set an extended attribute.
-    fn setxattr(
+    async fn setxattr(
         &self,
         _ino: u64,
         _name: ByteString,
         _value: Vec<u8>,
         _flags: i32,
         _position: u32,
-    ) -> Self::SetxAttrResultFuture<'_>;
+    ) -> Result<()>;
 
     /// Get an extended attribute.
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn getxattr(&self, _ino: u64, _name: ByteString, _size: u32) -> Self::GetxAttrResultFuture<'_>;
+    async fn getxattr(&self, _ino: u64, _name: ByteString, _size: u32) -> Result<Xattr>;
 
     /// List extended attribute names.
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn listxattr(&self, _ino: u64, _size: u32) -> Self::ListxAttrResultFuture<'_>;
+    async fn listxattr(&self, _ino: u64, _size: u32) -> Result<Xattr>;
 
     /// Remove an extended attribute.
-    fn removexattr(&self, _ino: u64, _name: ByteString) -> Self::RemovexAttrResultFuture<'_>;
+    async fn removexattr(&self, _ino: u64, _name: ByteString) -> Result<()>;
 
     /// Check file access permissions.
     /// This will be called for the access() system call. If the 'default_permissions'
     /// mount option is given, this method is not called. This method is not called
     /// under Linux kernel versions 2.4.x
-    fn access(&self, _ino: u64, _mask: i32) -> Self::AccessResultFuture<'_>;
+    async fn access(&self, _ino: u64, _mask: i32) -> Result<()>;
 
     /// Create and open a file.
     /// If the file does not exist, first create it with the specified mode, and then
@@ -423,7 +305,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// structure in <fuse_common.h> for more details. If this method is not
     /// implemented or under Linux kernel versions earlier than 2.6.15, the mknod()
     /// and open() methods will be called instead.
-    fn create(
+    async fn create(
         &self,
         _uid: u32,
         _gid: u32,
@@ -432,10 +314,10 @@ pub trait AsyncFileSystem: Send + Sync {
         _mode: u32,
         _umask: u32,
         _flags: i32,
-    ) -> Self::CreateResultFuture<'_>;
+    ) -> Result<Create>;
 
     /// Test for a POSIX file lock.
-    fn getlk(
+    async fn getlk(
         &self,
         _ino: u64,
         _fh: u64,
@@ -444,7 +326,7 @@ pub trait AsyncFileSystem: Send + Sync {
         _end: u64,
         _typ: i32,
         _pid: u32,
-    ) -> Self::GetlkResultFuture<'_>;
+    ) -> Result<Lock>;
 
     /// Acquire, modify or release a POSIX file lock.
     /// For POSIX threads (NPTL) there's a 1-1 relation between pid and owner, but
@@ -453,7 +335,7 @@ pub trait AsyncFileSystem: Send + Sync {
     /// used to fill in this field in getlk(). Note: if the locking methods are not
     /// implemented, the kernel will still allow file locking to work locally.
     /// Hence these are only interesting for network filesystems and similar.
-    fn setlk(
+    async fn setlk(
         &self,
         _ino: u64,
         _fh: u64,
@@ -463,29 +345,28 @@ pub trait AsyncFileSystem: Send + Sync {
         _typ: i32,
         _pid: u32,
         _sleep: bool,
-    ) -> Self::SetlkResultFuture<'_>;
+    ) -> Result<()>;
 
     /// Map block index within file to block index within device.
     /// Note: This makes sense only for block device backed filesystems mounted
     /// with the 'blkdev' option
-    fn bmap(&self, _ino: u64, _blocksize: u32, _idx: u64) -> Self::BmapResultFuture<'_>;
+    async fn bmap(&self, _ino: u64, _blocksize: u32, _idx: u64) -> Result<Bmap>;
 
     /// Preallocate or deallocate space to a file
-    fn fallocate(
+    async fn fallocate(
         &self,
         _ino: u64,
         _fh: u64,
         _offset: i64,
         _length: i64,
         _mode: i32,
-    ) -> Self::FallocateResultFuture<'_>;
+    ) -> Result<()>;
 
     /// Reposition read/write file offset
-    fn lseek(&self, _ino: u64, _fh: u64, _offset: i64, _whence: i32)
-        -> Self::LseekResultFuture<'_>;
+    async fn lseek(&self, _ino: u64, _fh: u64, _offset: i64, _whence: i32) -> Result<Lseek>;
 
     /// Copy the specified range from the source inode to the destination inode
-    fn copy_file_range(
+    async fn copy_file_range(
         &self,
         _ino_in: u64,
         _fh_in: u64,
@@ -495,7 +376,7 @@ pub trait AsyncFileSystem: Send + Sync {
         _offset_out: i64,
         _len: u64,
         _flags: u32,
-    ) -> Self::CopyFileRangeResultFuture<'_>;
+    ) -> Result<Write>;
 }
 
 pub struct AsyncFs<T>(Arc<T>);
